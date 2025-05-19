@@ -1,0 +1,397 @@
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sistem Antrian Kontainer</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f4f6f8;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1000px;
+      margin: auto;
+      background: #fff;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      position: relative;
+    }
+    h1 {
+      text-align: center;
+      color: #2c3e50;
+      cursor: pointer;
+    }
+    .form-group {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .form-group input {
+      padding: 10px;
+      border: 2px solid #3498db;
+      border-radius: 8px;
+      font-size: 16px;
+      flex: 1 1 200px;
+    }
+    .form-group input[disabled] {
+      background: #ecf0f1;
+    }
+    .form-group button {
+      padding: 10px 20px;
+      background: #27ae60;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 16px;
+      flex: 0 0 120px;
+    }
+    ul { list-style: none; padding: 0; }
+    li {
+      background: #ecf0f1;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-radius: 10px;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .btn {
+      margin: 3px;
+      padding: 6px 10px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 14px;
+    }
+    .btn-edit { background: #f39c12; color: white; }
+    .btn-hapus { background: #e74c3c; color: white; }
+    .btn-proses { background: #2980b9; color: white; }
+    .btn-selesai { background: #27ae60; color: white; }
+    .btn-export { background: #8e44ad; color: white; margin-top: 20px; width: 100%; padding: 12px; font-size: 18px; }
+    .btn-wa { background: #27ae60; color: white; margin-top: 10px; padding: 12px 24px; font-size: 16px; }
+    .btn-reset { background: #bdc3c7; color: #2c3e50; font-size: 12px; position: absolute; top: 20px; left: 20px; }
+    label { font-weight: bold; color: #34495e; }
+    .tanggal-kanan {
+      text-align: right;
+      color: #2c3e50;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    select.rit-select {
+      font-size: 14px;
+      padding: 5px 8px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      margin-left: 10px;
+      cursor: pointer;
+    }
+    .waCheckbox {
+      cursor: pointer;
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 30px;
+      color: #888;
+      font-size: 14px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <button class="btn btn-reset" onclick="resetData()">Reset Semua</button>
+
+  <div class="tanggal-kanan">
+    <span id="tanggalSekarang"></span>
+  </div>
+
+  <div class="container">
+    <h1 onclick="location.reload()">Sistem Antrian Kontainer</h1>
+
+    <div class="form-group">
+      <input type="text" id="platInput" placeholder="Nomor Polisi" autofocus />
+      <input type="text" id="transporterInput" placeholder="Nama Transporter" disabled />
+      <input type="text" id="hpInput" placeholder="Nomor HP" disabled />
+      <button onclick="tambahKontainer()">Tambah</button>
+    </div>
+
+    <div>
+      <h2>List Nomor Polisi (Waiting List)</h2>
+      <ul id="waitingList"></ul>
+    </div>
+
+    <div>
+      <h2>Proses Stuffing</h2>
+      <label><input type="checkbox" id="cekSemua" onchange="toggleCeklisSemua()"> Ceklis Semua</label>
+      <ul id="prosesList"></ul>
+      <button class="btn btn-wa" onclick="kirimNotifikasi()">Kirim Notifikasi via WA</button>
+    </div>
+
+    <div>
+      <h2>Stuffing Selesai</h2>
+      <ul id="selesaiList"></ul>
+    </div>
+
+    <button class="btn btn-export" onclick="exportToExcel()">Export ke Excel</button>
+
+    <div id="logStatus"></div>
+  </div>
+
+  <script>
+    const dataTransporter = [
+      { transporter: "PT. Angkasa", plat: "B1234CD", hp: "6281234567890" },
+      { transporter: "PT. Samudra", plat: "D5678EF", hp: "6282223344556" },
+      { transporter: "PT. Logistik Makmur", plat: "F9012GH", hp: "6283334455667" }
+    ];
+
+    let waitingList = JSON.parse(localStorage.getItem("waitingList") || "[]");
+    let prosesList = JSON.parse(localStorage.getItem("prosesList") || "[]");
+    let selesaiList = JSON.parse(localStorage.getItem("selesaiList") || "[]");
+
+    const transporterInput = document.getElementById("transporterInput");
+    const platInput = document.getElementById("platInput");
+    const hpInput = document.getElementById("hpInput");
+    const logArea = document.getElementById("logStatus");
+
+    platInput.addEventListener("input", () => {
+      const plat = platInput.value.toUpperCase().trim();
+      const match = dataTransporter.find(item => item.plat === plat);
+      if (match) {
+        transporterInput.value = match.transporter;
+        hpInput.value = match.hp;
+      } else {
+        transporterInput.value = "";
+        hpInput.value = "";
+      }
+    });
+
+    function tambahKontainer() {
+      const transporter = transporterInput.value.trim();
+      const plat = platInput.value.trim().toUpperCase();
+      const hp = hpInput.value.trim();
+
+      if (!transporter || !plat || !hp.startsWith("62")) {
+        alert("Data tidak valid atau tidak ditemukan.");
+        return;
+      }
+
+      if ([...waitingList, ...prosesList, ...selesaiList].some(item => item.plat === plat)) {
+        alert("Nopol sudah terdaftar!");
+        return;
+      }
+
+      const tanggal = new Date().toLocaleString('id-ID');
+      waitingList.push({ transporter, plat, hp, tanggal });
+      simpanData();
+      transporterInput.value = "";
+      platInput.value = "";
+      hpInput.value = "";
+      platInput.focus();
+      renderLists();
+    }
+
+    function simpanData() {
+      localStorage.setItem("waitingList", JSON.stringify(waitingList));
+      localStorage.setItem("prosesList", JSON.stringify(prosesList));
+      localStorage.setItem("selesaiList", JSON.stringify(selesaiList));
+    }
+
+    function renderLists() {
+      const waitingEl = document.getElementById("waitingList");
+      const prosesEl = document.getElementById("prosesList");
+      const selesaiEl = document.getElementById("selesaiList");
+
+      waitingEl.innerHTML = "";
+      prosesEl.innerHTML = "";
+      selesaiEl.innerHTML = "";
+
+      waitingList.forEach((item, index) => {
+        const li = document.createElement("li");
+        li.innerHTML = `
+          <div>
+            <label>${item.transporter}</label><br>
+            <strong>${item.plat}</strong> | ${item.hp}<br>
+            <small>${item.tanggal}</small>
+          </div>
+          <div>
+            <button class="btn btn-proses" onclick="prosesItem(${index})">Proses</button>
+            <button class="btn btn-edit" onclick="editItem(${index}, 'waiting')">Edit</button>
+            <button class="btn btn-hapus" onclick="hapusItem(${index}, 'waiting')">Hapus</button>
+          </div>
+        `;
+        waitingEl.appendChild(li);
+      });
+
+      prosesList.forEach((item, index) => {
+        const li = document.createElement("li");
+        li.innerHTML = `
+          <div>
+            <label>
+              <input type="checkbox" class="waCheckbox" data-index="${index}" />
+              ${item.transporter}
+            </label><br>
+            <strong>${item.plat}</strong> | ${item.hp}<br>
+            <small>${item.tanggal}</small>
+          </div>
+          <div>
+            <select class="rit-select" data-index="${index}" onchange="updateRit(${index}, this.value)">
+              <option value="RIT 1" ${item.rit === "RIT 1" ? "selected" : ""}>RIT 1</option>
+              <option value="RIT 2" ${item.rit === "RIT 2" ? "selected" : ""}>RIT 2</option>
+              <option value="RIT 3" ${item.rit === "RIT 3" ? "selected" : ""}>RIT 3</option>
+            </select>
+            <button class="btn btn-selesai" onclick="selesaiItem(${index})">Stuffing Selesai</button>
+            <button class="btn btn-edit" onclick="editItem(${index}, 'proses')">Edit</button>
+            <button class="btn btn-hapus" onclick="hapusItem(${index}, 'proses')">Hapus</button>
+          </div>
+        `;
+        prosesEl.appendChild(li);
+      });
+
+      selesaiList.forEach((item, index) => {
+        const li = document.createElement("li");
+        li.innerHTML = `
+          <div>
+            <label>${item.transporter}</label><br>
+            <strong>${item.plat}</strong> | ${item.hp}<br>
+            <small>${item.tanggal}</small><br>
+            <small><strong>RIT:</strong> ${item.rit || "-"}</small>
+          </div>
+          <div>
+            <button class="btn btn-edit" onclick="editItem(${index}, 'selesai')">Edit</button>
+            <button class="btn btn-hapus" onclick="hapusItem(${index}, 'selesai')">Hapus</button>
+          </div>
+        `;
+        selesaiEl.appendChild(li);
+      });
+    }
+
+    function updateRit(index, ritValue) {
+      prosesList[index].rit = ritValue;
+      simpanData();
+    }
+
+    function prosesItem(index) {
+      const item = waitingList.splice(index, 1)[0];
+      item.rit = "RIT 1";
+      prosesList.push(item);
+      simpanData();
+      renderLists();
+    }
+
+    function selesaiItem(index) {
+      const item = prosesList.splice(index, 1)[0];
+      selesaiList.push(item);
+      simpanData();
+      renderLists();
+    }
+
+    function editItem(index, type) {
+      const list = type === "waiting" ? waitingList : type === "proses" ? prosesList : selesaiList;
+      const item = list[index];
+      const newTransporter = prompt("Edit Nama Transporter:", item.transporter);
+      const newPlat = prompt("Edit Nopol:", item.plat);
+      const newHp = prompt("Edit No HP:", item.hp);
+
+      if (newTransporter && newPlat && newHp.startsWith("62")) {
+        item.transporter = newTransporter;
+        item.plat = newPlat.toUpperCase();
+        item.hp = newHp;
+        simpanData();
+        renderLists();
+      } else {
+        alert("Data tidak valid.");
+      }
+    }
+
+    function hapusItem(index, type) {
+      const list = type === "waiting" ? waitingList : type === "proses" ? prosesList : selesaiList;
+      list.splice(index, 1);
+      simpanData();
+      renderLists();
+    }
+
+    function kirimNotifikasi() {
+      const checkedBoxes = document.querySelectorAll('.waCheckbox:checked');
+      logArea.innerHTML = "";
+
+      if (checkedBoxes.length === 0) {
+        alert("Silakan pilih minimal satu data.");
+        return;
+      }
+
+      const now = new Date().toLocaleString('id-ID');
+
+      checkedBoxes.forEach(cb => {
+        const index = parseInt(cb.dataset.index);
+        const item = prosesList[index];
+        const rit = item.rit || "RIT 1";
+        const pesan = `*[Info Kontainer]*\nTanggal: ${now}\nTransporter: ${item.transporter}\nNopol: ${item.plat}\nRIT: ${rit}\nSedang dalam proses stuffing.`;
+        const waUrl = `https://wa.me/${item.hp}?text=${encodeURIComponent(pesan)}`;
+        window.open(waUrl, '_blank');
+        logArea.innerHTML += `✔️ WA dikirim ke ${item.hp} (RIT: ${rit})<br>`;
+      });
+    }
+
+    function toggleCeklisSemua() {
+      const ceklis = document.getElementById("cekSemua").checked;
+      document.querySelectorAll(".waCheckbox").forEach(cb => cb.checked = ceklis);
+    }
+
+    function resetData() {
+      if (confirm("Yakin reset semua data?")) {
+        waitingList = [];
+        prosesList = [];
+        selesaiList = [];
+        simpanData();
+        renderLists();
+        document.getElementById("cekSemua").checked = false;
+        logArea.innerHTML = "";
+      }
+    }
+
+    function exportToExcel() {
+      let csv = "Transporter,Nopol,No HP,Tanggal,RIT,Status\n";
+      waitingList.forEach(item => {
+        csv += `${item.transporter},${item.plat},${item.hp},${item.tanggal},,Waiting\n`;
+      });
+      prosesList.forEach(item => {
+        csv += `${item.transporter},${item.plat},${item.hp},${item.tanggal},${item.rit || ""},Proses Stuffing\n`;
+      });
+      selesaiList.forEach(item => {
+        csv += `${item.transporter},${item.plat},${item.hp},${item.tanggal},${item.rit || ""},Stuffing Selesai\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `data_antrian_${new Date().toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    function tampilkanTanggal() {
+      const el = document.getElementById("tanggalSekarang");
+      const now = new Date();
+      const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+      el.textContent = now.toLocaleDateString('id-ID', options);
+    }
+
+    tampilkanTanggal();
+    renderLists();
+  </script>
+
+  <footer>
+    CREATE BY AHM-KOPICURUT
+  </footer>
+</body>
+</html>
